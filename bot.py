@@ -12,6 +12,7 @@ from PIL import Image
 import pytesseract
 import pdfplumber
 import re
+import os
 
 # Вкажіть шлях до Tesseract на вашому macOS
 pytesseract.pytesseract.tesseract_cmd = '/opt/homebrew/bin/tesseract'
@@ -21,7 +22,8 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 logger = logging.getLogger(__name__)
 
 # Налаштування бота
-API_TOKEN = "7310229892:AAH9urKnMAX62dVPPDhQ7tlAtTz1xDZe05c"
+
+API_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID_HOME = -1001442489680  # Чат для Дому
 CHAT_ID_DACHA = -1002317620785  # Чат для Дачі
 SUMMARY_CHAT_ID = -1001442489680  # Чат для підсумків (можна змінити)
