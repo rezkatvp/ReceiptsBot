@@ -1,0 +1,4 @@
+aiogram==3.6.0
+pillow==10.2.0
+pytesseract==0.3.10
+pdfplumber==0.11.0
