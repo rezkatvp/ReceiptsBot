@@ -14,25 +14,25 @@ import pdfplumber
 import re
 import os
 
-# Вкажіть шлях до Tesseract на вашому macOS
-pytesseract.pytesseract.tesseract_cmd = '/opt/homebrew/bin/tesseract'
+# Налаштування Tesseract (буде змінено для Heroku через buildpack)
+pytesseract.pytesseract.tesseract_cmd = '/opt/homebrew/bin/tesseract'  # Для локального тестування
 
 # Налаштування логування
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Налаштування бота
-
-API_TOKEN = os.getenv("BOT_TOKEN")
+API_TOKEN = os.getenv("BOT_TOKEN")  # Використовуємо змінну середовища
 CHAT_ID_HOME = -1001442489680  # Чат для Дому
 CHAT_ID_DACHA = -1002317620785  # Чат для Дачі
-SUMMARY_CHAT_ID = -1001442489680  # Чат для підсумків (можна змінити)
+SUMMARY_CHAT_ID = -1001442489680  # Чат для підсумків
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Словник для зберігання сум (формат: {"рік-місяць": сума})
-PAYMENT_SUMS = {}
+# Словники для зберігання даних
+PAYMENT_SUMS = {}  # Формат: {"рік-місяць": сума}
+SUMMARY_SENT = {}  # Формат: {"рік-місяць": True} - чи був надісланий підсумок
 
 # Визначення ключових слів для ідентифікації об'єктів
 HOME_IDENTIFIERS = {"Чорнобильська"}
@@ -228,6 +228,24 @@ async def cancel_process(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Процес скасовано. Надішли нову квитанцію через /start!", reply_markup=types.ReplyKeyboardRemove())
 
+@dp.message(Command("summary"))
+async def show_summary(message: types.Message):
+    now = datetime.now()
+    last_month = now - timedelta(days=26)  # Попередній місяць
+    month_key = f"{last_month.year}-{last_month.month:02d}"
+    total = PAYMENT_SUMS.get(month_key, 0)
+    
+    if total > 0:
+        month_name = VALID_MONTHS[last_month.month - 1]
+        hryvnias = int(total)
+        kopecks = int((total - hryvnias) * 100)
+        await message.answer(
+            f"Всього за {month_name.lower()} {last_month.year} року заплачено {hryvnias} грн {kopecks:02d} коп."
+        )
+        logger.info("Користувач %s запросив підсумок за %s: %s грн %s коп", message.from_user.id, month_key, hryvnias, kopecks)
+    else:
+        await message.answer(f"За попередній місяць ({VALID_MONTHS[last_month.month - 1].lower()} {last_month.year}) немає даних.")
+
 @dp.message(lambda message: message.photo or message.document)
 async def handle_receipt(message: types.Message, state: FSMContext):
     logger.debug("Отримано фото або документ від %s, тип: %s", message.from_user.id, message.content_type)
@@ -381,10 +399,12 @@ async def send_monthly_summary():
         now = datetime.now()
         # Перевіряємо, чи 26 число
         if now.day == 26:
-            last_month = now - timedelta(days=26)  # Приблизно попередній місяць
+            last_month = now - timedelta(days=26)  # Попередній місяць
             month_key = f"{last_month.year}-{last_month.month:02d}"
             total = PAYMENT_SUMS.get(month_key, 0)
-            if total > 0:
+            
+            # Перевіряємо, чи підсумок ще не надсилався цього місяця
+            if total > 0 and not SUMMARY_SENT.get(month_key, False):
                 month_name = VALID_MONTHS[last_month.month - 1]
                 hryvnias = int(total)
                 kopecks = int((total - hryvnias) * 100)
@@ -392,7 +412,8 @@ async def send_monthly_summary():
                     SUMMARY_CHAT_ID,
                     f"Всього за {month_name.lower()} {last_month.year} року заплачено {hryvnias} грн {kopecks:02d} коп."
                 )
-                logger.info("Надіслано підсумок за %s: %s грн %s коп", month_key, hryvnias, kopecks)
+                SUMMARY_SENT[month_key] = True  # Позначаємо, що підсумок надіслано
+                logger.info("Надіслано автоматичний підсумок за %s: %s грн %s коп", month_key, hryvnias, kopecks)
             # Чекаємо до наступного дня
             await asyncio.sleep(24 * 60 * 60)
         else:
